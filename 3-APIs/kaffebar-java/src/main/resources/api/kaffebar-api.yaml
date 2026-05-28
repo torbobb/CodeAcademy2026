@@ -19,6 +19,107 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Coffee'
+  /orders:
+    post:
+      summary: Bestill kaffe
+      description: Bestiller en kaffe
+      operationId: orderCoffee
+      requestBody:
+        description: Bestilling med coffeeId og størrelse
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Order'
+      responses:
+        '200':
+          description: Bestillingen er mottatt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderConfirmation'
+    get:
+      summary: Hent alle ordre
+      description: Returnerer alle ordre.
+      operationId: getOrders
+      parameters:
+        - name: status
+          in: query
+          description: What status to return
+          required: false
+          schema:
+            $ref: '#/components/schemas/Status'
+        - name: limit
+          in: query
+          description: How many items to return
+          required: false
+          schema:
+            type: integer
+            default: 10
+        - name: offset
+          in: query
+          description: The number of items to skip before starting to collect the result set.
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: En liste med ordre ble vellykket hentet.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderConfirmation'
+  /orders/{orderId}:
+    get:
+      summary: Hent ut en ordre
+      description: Henter ut en ordre
+      operationId: getOrder
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Bestillingsbekreftelse
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderConfirmation'
+        '400' :
+          description: Feil
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /orders/status/{orderId}/{status}:
+    patch:
+      summary: Oppdater status for en ordre
+      description: Baristaen oppdaterer status for en ordre
+      operationId: updateOrder
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+        - name: status
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Status'
+      responses:
+        '200':
+          description: Status er oppdatert
 
 components:
   schemas:
@@ -41,3 +142,90 @@ components:
           type: number
           format: double
           example: 48.50
+    Order:
+      type: object
+      description: Representerer en kaffebestilling.
+      required:
+        - customerName
+      properties:
+        customerName:
+          type: string
+          minLength: 1
+          example: Max Mekker
+        orderItems:
+          type: array
+          minimum: 1
+          maximum: 10
+          items:
+            $ref: '#/components/schemas/OrderItem'
+    OrderItem:
+      type: object
+      description: Representerer en kaffe i kaffebestillingen.
+      required:
+        - coffeeId
+        - size
+        - milkType
+      properties:
+        coffeeId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        size:
+          type: string
+          enum:
+            - SMALL
+            - MEDIUM
+            - LARGE
+        milkType:
+          type: string
+          enum:
+            - LETTMELK
+            - HELMELK
+            - HAVRE
+            - SOYA
+        extraShot:
+          type: boolean
+
+    OrderConfirmation:
+      type: object
+      description: Representerer en bekreftelse på kaffebestilling.
+      required:
+        - id
+        - coffeeId
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          $ref: '#/components/schemas/Status'
+        coffeeIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: "about:blank"
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 100
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+    Status:
+      type: string
+      enum:
+        - PENDING
+        - BREWING
+        - READY
