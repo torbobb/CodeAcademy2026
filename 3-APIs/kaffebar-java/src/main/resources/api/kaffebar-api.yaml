@@ -20,6 +20,22 @@ paths:
                 items:
                   $ref: '#/components/schemas/Coffee'
 
+  /menu/names:
+    get:
+      summary: Hent navn på kaffetyper
+      description: Returnerer navnene på alle kaffetypene på menyen.
+      operationId: getCoffeeNames
+      responses:
+        '200':
+          description: En liste med kaffenavn ble vellykket hentet.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["Kaffe Latte", "Svart Kaffe (V60)"]
+
 components:
   schemas:
     Coffee:

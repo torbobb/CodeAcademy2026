@@ -49,11 +49,15 @@ class KaffebarApiTest {
     @Autowired
     private OrderStore store;
 
+    @Autowired
+    private no.soprasteria.kaffebar.store.MixedOrderStore mixedStore;
+
     @BeforeEach
     void resetStore() {
         // Lagringen er i minne og delt mellom testene. Uten denne ville rekkefølgen
         // på testene bestemt om de går grønt.
         store.reset();
+        mixedStore.reset();
     }
 
     @Nested
@@ -340,6 +344,135 @@ class KaffebarApiTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status", is("ok")))
                     .andExpect(jsonPath("$.rabbitmq", is("disabled")));
+        }
+    }
+
+    @Nested
+    @DisplayName("Bakst — oppgave 9")
+    class Pastries {
+
+        private static final String CROISSANT = "ba5e0001-0000-4000-8000-000000000002";
+
+        private String body(String pastryType) {
+            return """
+                    {"customerName": "Ada", "items": [
+                      {"type": "coffee", "coffeeId": "%s", "size": "MEDIUM", "milkType": "OAT"},
+                      {"type": "%s", "pastryId": "%s", "isVegan": true, "warmed": true}
+                    ]}""".formatted(LATTE, pastryType, CROISSANT);
+        }
+
+        @Test
+        @DisplayName("GET /pastries gir bakverkene med faste uuid-er")
+        void listsPastries() throws Exception {
+            mockMvc.perform(get("/pastries"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$", hasSize(5)))
+                    .andExpect(jsonPath("$[1].id", is(CROISSANT)))
+                    .andExpect(jsonPath("$[1].name", is("Croissant")));
+        }
+
+        @Test
+        @DisplayName("POST /orders-v2 tar imot kaffe og bakst i samme bestilling")
+        void createsMixedOrder() throws Exception {
+            mockMvc.perform(post("/orders-v2")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("pastry")))
+                    .andExpect(status().isCreated())
+                    .andExpect(header().string("Location", matchesPattern("/orders-v2/[0-9a-f-]{36}")))
+                    .andExpect(jsonPath("$.status", is("PENDING")))
+                    .andExpect(jsonPath("$.items", hasSize(2)))
+                    .andExpect(jsonPath("$.items[0].type", is("coffee")))
+                    .andExpect(jsonPath("$.items[0].milkType", is("OAT")))
+                    .andExpect(jsonPath("$.items[1].type", is("pastry")))
+                    .andExpect(jsonPath("$.items[1].pastryId", is(CROISSANT)))
+                    .andExpect(jsonPath("$.items[1].isVegan", is(true)));
+        }
+
+        @Test
+        @DisplayName("GET /orders-v2/{id} gir tilbake den opprettede bestillingen")
+        void fetchesCreatedOrder() throws Exception {
+            String location = mockMvc.perform(post("/orders-v2")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("pastry")))
+                    .andReturn().getResponse().getHeader("Location");
+
+            mockMvc.perform(get(location))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.customerName", is("Ada")))
+                    .andExpect(jsonPath("$.items[1].type", is("pastry")));
+        }
+
+        @Test
+        @DisplayName("GET /orders-v2 lister nyeste først og filtrerer på status")
+        void listsAndFiltersMixedOrders() throws Exception {
+            mockMvc.perform(post("/orders-v2").contentType(MediaType.APPLICATION_JSON)
+                    .content(body("pastry")));
+            String second = mockMvc.perform(post("/orders-v2")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("pastry")))
+                    .andReturn().getResponse().getHeader("Location");
+
+            mockMvc.perform(patch(second).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\": \"READY\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status", is("READY")));
+
+            mockMvc.perform(get("/orders-v2"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$", hasSize(2)));
+            mockMvc.perform(get("/orders-v2").param("status", "READY"))
+                    .andExpect(jsonPath("$", hasSize(1)))
+                    .andExpect(jsonPath("$[0].items[1].type", is("pastry")));
+            mockMvc.perform(get("/orders-v2").param("status", "BREWING"))
+                    .andExpect(jsonPath("$", hasSize(0)));
+        }
+
+        @Test
+        @DisplayName("PATCH /orders-v2/{id} gir 404 for ukjent bestilling")
+        void patchUnknownMixedOrder() throws Exception {
+            mockMvc.perform(patch("/orders-v2/{id}", "00000000-0000-0000-0000-000000000000")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\": \"READY\"}"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+        }
+
+        @Test
+        @DisplayName("gir 404 for ukjent bakverk")
+        void rejectsUnknownPastry() throws Exception {
+            mockMvc.perform(post("/orders-v2")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"customerName": "Ada", "items": [
+                                      {"type": "pastry", "pastryId": "00000000-0000-4000-8000-000000000000"}]}"""))
+                    .andExpect(status().isNotFound())
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                    .andExpect(jsonPath("$.detail", containsString("GET /pastries")));
+        }
+
+        @Test
+        @DisplayName("gir 400 for tom liste og ukjent type")
+        void rejectsEmptyItemsAndUnknownType() throws Exception {
+            mockMvc.perform(post("/orders-v2")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"customerName": "Ada", "items": []}"""))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+
+            mockMvc.perform(post("/orders-v2")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body("sandwich")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+        }
+
+        @Test
+        @DisplayName("lar POST /orders være uendret")
+        void keepsOrdersContract() throws Exception {
+            mockMvc.perform(get("/orders/{orderId}", SEEDED_PENDING))
+                    .andExpect(jsonPath("$.coffeeId").exists())
+                    .andExpect(jsonPath("$.items").doesNotExist());
         }
     }
 }

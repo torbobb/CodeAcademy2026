@@ -10,13 +10,21 @@ import {
   SIZE_LABEL,
   type Coffee,
   type CoffeeSize,
+  type CreateMixedOrderRequest,
   type CreateOrderRequest,
   type MilkType,
+  type MixedOrder,
   type Order,
+  type Pastry,
 } from "@/types/domain";
+import { formatPrice } from "@/lib/format";
 
 const SIZES: CoffeeSize[] = ["SMALL", "MEDIUM", "LARGE"];
 const MILKS: MilkType[] = ["WHOLE", "SKIMMED", "OAT", "SOY"];
+
+type Submission =
+  | { kind: "coffee"; request: CreateOrderRequest }
+  | { kind: "mixed"; request: CreateMixedOrderRequest };
 
 /**
  * Bestillingsskjemaet. Utlevert.
@@ -24,12 +32,17 @@ const MILKS: MilkType[] = ["WHOLE", "SKIMMED", "OAT", "SOY"];
  * Legg merke til at den poster til /api/orders — vår egen route handler — og
  * ikke til Kaffebar-API-et direkte. Nettleseren vet ikke at Kaffebar-API-et
  * finnes; det er BFF-en som vet det.
+ *
+ * Velger kunden bakverk, går bestillingen til /api/mixed-orders (POST /orders-v2)
+ * med én kaffelinje per `antall` og én bakverklinje per valgt bakverk.
  */
 export function OrderForm({
   menu,
+  pastries = [],
   onOrdered,
 }: {
   menu: Coffee[];
+  pastries?: Pastry[];
   onOrdered?: (order: Order) => void;
 }) {
   const queryClient = useQueryClient();
@@ -39,23 +52,29 @@ export function OrderForm({
   const [milkType, setMilkType] = useState<MilkType | "">("");
   const [extraShot, setExtraShot] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [selectedPastries, setSelectedPastries] = useState<Set<string>>(new Set());
 
   const mutation = useMutation({
-    mutationFn: async (request: CreateOrderRequest) => {
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(request),
-      });
+    mutationFn: async (submission: Submission) => {
+      const response = await fetch(
+        submission.kind === "mixed" ? "/api/mixed-orders" : "/api/orders",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(submission.request),
+        },
+      );
       const body = await response.json();
       if (!response.ok) throw new Error(body.message ?? "Bestillingen gikk ikke gjennom");
-      return body as Order;
+      return { kind: submission.kind, order: body as Order | MixedOrder };
     },
-    onSuccess: (order) => {
+    onSuccess: ({ kind, order }) => {
       setCustomerName("");
       setQuantity(1);
+      setSelectedPastries(new Set());
       void queryClient.invalidateQueries({ queryKey: ORDERS_QUERY_KEY });
-      onOrdered?.(order);
+      // Blandede bestillinger finnes ikke i /orders, så «din bestilling»-kortet kan ikke følge dem.
+      if (kind === "coffee") onOrdered?.(order as Order);
     },
   });
 
@@ -69,19 +88,52 @@ export function OrderForm({
     );
   }
 
+  const togglePastry = (id: string) =>
+    setSelectedPastries((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!selected) return;
 
+    if (selectedPastries.size > 0) {
+      mutation.mutate({
+        kind: "mixed",
+        request: {
+          customerName: customerName.trim(),
+          items: [
+            ...Array.from({ length: quantity }, () => ({
+              type: "coffee" as const,
+              coffeeId: selected.id,
+              size,
+              ...(milkType ? { milkType } : {}),
+              ...(extraShot ? { extraShot } : {}),
+            })),
+            ...[...selectedPastries].map((pastryId) => ({
+              type: "pastry" as const,
+              pastryId,
+            })),
+          ],
+        },
+      });
+      return;
+    }
+
     mutation.mutate({
-      coffeeId: selected.id,
-      customerName: customerName.trim(),
-      size,
-      ...(milkType ? { milkType } : {}),
-      ...(extraShot ? { extraShot } : {}),
-      // `quantity` har default i kontrakten, men openapi-typescript gjør felt
-      // med default-verdi påkrevde i TypeScript. Vi sender den alltid.
-      quantity,
+      kind: "coffee",
+      request: {
+        coffeeId: selected.id,
+        customerName: customerName.trim(),
+        size,
+        ...(milkType ? { milkType } : {}),
+        ...(extraShot ? { extraShot } : {}),
+        // `quantity` har default i kontrakten, men openapi-typescript gjør felt
+        // med default-verdi påkrevde i TypeScript. Vi sender den alltid.
+        quantity,
+      },
     });
   };
 
@@ -101,6 +153,32 @@ export function OrderForm({
         </div>
       </fieldset>
 
+      {pastries.length > 0 && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-2 text-sm font-semibold">Legg til bakverk (valgfritt)</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {pastries.map((pastry) => (
+              <label
+                key={pastry.id}
+                className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 has-[:checked]:border-accent has-[:checked]:bg-accent-soft"
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={selectedPastries.has(pastry.id)}
+                    onChange={() => togglePastry(pastry.id)}
+                    className="h-4 w-4 accent-[var(--accent)]"
+                  />
+                  {pastry.name}
+                </span>
+                <span className="shrink-0 font-mono text-sm text-secondary">
+                  {formatPrice(pastry.price)}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-semibold">Navn</span>

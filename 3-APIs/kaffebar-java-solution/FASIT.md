@@ -522,7 +522,12 @@ test.
 mvn -f oppgave-9/pom.xml clean test
 ```
 
-**Hvorfor ikke i hovedkontrakten:** `oneOf` i `Order` endrer formen på ordre-objektet og
+**Også implementert additivt i hovedkontrakten:** `GET /pastries`, `POST /orders-v2` og
+`GET /orders-v2/{orderId}` tar imot bestillinger der hver linje er `coffee` eller
+`pastry` (`oneOf` + `discriminator`). `Order` og `POST /orders` er urørt, og det
+publiseres ingen RabbitMQ-hendelser for `/orders-v2`.
+
+**Hvorfor ikke i `Order` selv:** `oneOf` i `Order` endrer formen på ordre-objektet og
 brekker wire-kompatibiliteten med `4-Frontend/kaffebar-api`. Den genererte
 TypeScript-klienten i samling 4 måtte da skrives om.
 Referanse-implementasjonen har utelatt oppgave 9 av samme grunn.

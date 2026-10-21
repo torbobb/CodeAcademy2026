@@ -1,5 +1,14 @@
 import { KAFFEBAR_API_URL, USE_MOCK_API } from "./config";
-import type { Coffee, CreateOrderRequest, Order, OrderStatus, Problem } from "@/types/domain";
+import type {
+  Coffee,
+  CreateMixedOrderRequest,
+  CreateOrderRequest,
+  MixedOrder,
+  Order,
+  OrderStatus,
+  Pastry,
+  Problem,
+} from "@/types/domain";
 
 /**
  * HTTP-laget mot Kaffebar-API-et. UTLEVERT — du skal ikke skrive dette i dag.
@@ -54,6 +63,59 @@ export async function fetchMenu(): Promise<Coffee[]> {
   // et sideskifte føles umiddelbart, uten at den blir feil hvis du endrer seed.
   const response = await fetch(`${KAFFEBAR_API_URL}/menu`, { next: { revalidate: 60 } });
   return handle<Coffee[]>(response);
+}
+
+/** GET /pastries */
+export async function fetchPastries(): Promise<Pastry[]> {
+  if (USE_MOCK_API) return (await import("@/mocks/api")).mockFetchPastries();
+
+  const response = await fetch(`${KAFFEBAR_API_URL}/pastries`, { next: { revalidate: 60 } });
+  return handle<Pastry[]>(response);
+}
+
+/** POST /orders-v2 */
+export async function createMixedOrder(request: CreateMixedOrderRequest): Promise<MixedOrder> {
+  if (USE_MOCK_API) return (await import("@/mocks/api")).mockCreateMixedOrder(request);
+
+  const response = await fetch(`${KAFFEBAR_API_URL}/orders-v2`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+    cache: "no-store",
+  });
+  return handle<MixedOrder>(response);
+}
+
+/** GET /orders-v2?status=&limit= */
+export async function fetchMixedOrders(
+  params: { status?: OrderStatus; limit?: number } = {},
+): Promise<MixedOrder[]> {
+  if (USE_MOCK_API) return (await import("@/mocks/api")).mockFetchMixedOrders(params);
+
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  query.set("limit", String(params.limit ?? 100));
+
+  const response = await fetch(`${KAFFEBAR_API_URL}/orders-v2?${query}`, { cache: "no-store" });
+  return handle<MixedOrder[]>(response);
+}
+
+/** PATCH /orders-v2/{orderId} */
+export async function updateMixedOrderStatus(
+  orderId: string,
+  status: OrderStatus,
+): Promise<MixedOrder> {
+  if (USE_MOCK_API) {
+    return (await import("@/mocks/api")).mockUpdateMixedOrderStatus(orderId, status);
+  }
+
+  const response = await fetch(`${KAFFEBAR_API_URL}/orders-v2/${orderId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status }),
+    cache: "no-store",
+  });
+  return handle<MixedOrder>(response);
 }
 
 /** GET /orders?status=&limit=&offset= */

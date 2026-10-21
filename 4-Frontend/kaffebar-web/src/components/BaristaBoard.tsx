@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StatusColumn } from "./StatusColumn";
 import { LiveIndicator } from "./LiveIndicator";
 import { useOrders, useUpdateStatus } from "@/hooks/useOrders";
-import { STATUS_ORDER, type Order, type OrderStatus } from "@/types/domain";
+import { useMixedOrders, useUpdateMixedStatus } from "@/hooks/useMixedOrders";
+import {
+  STATUS_ORDER,
+  type Coffee,
+  type MixedOrder,
+  type Order,
+  type OrderStatus,
+  type Pastry,
+} from "@/types/domain";
 
 /**
  * Baristaskjermen. Utlevert.
@@ -12,11 +20,31 @@ import { STATUS_ORDER, type Order, type OrderStatus } from "@/types/domain";
  * Denne komponenten er grunnen til at hendelsene er verdt bryet: den har ingen egen
  * tilstand for ordrene. Den leser fra TanStack Query, og `useOrders` invaliderer
  * cachen når det kommer en hendelse over SSE. Ingen polling, ingen manuell synk.
+ *
+ * Bestillinger med kaffe og bakst (`/orders-v2`) vises i de samme kolonnene. De har
+ * ingen hendelser, så de hentes med rolig polling (se `useMixedOrders`).
  */
-export function BaristaBoard({ initialOrders }: { initialOrders: Order[] }) {
+export function BaristaBoard({
+  initialOrders,
+  initialMixedOrders = [],
+  menu = [],
+  pastries = [],
+}: {
+  initialOrders: Order[];
+  initialMixedOrders?: MixedOrder[];
+  menu?: Coffee[];
+  pastries?: Pastry[];
+}) {
   const { data: orders = [], connection } = useOrders(initialOrders);
+  const { data: mixedOrders = [] } = useMixedOrders(initialMixedOrders);
   const updateStatus = useUpdateStatus();
+  const updateMixedStatus = useUpdateMixedStatus();
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+
+  const names = useMemo(
+    () => new Map([...menu, ...pastries].map((item) => [item.id, item.name])),
+    [menu, pastries],
+  );
 
   const advance = (order: Order, status: OrderStatus) => {
     setBusyOrderId(order.orderId);
@@ -26,11 +54,21 @@ export function BaristaBoard({ initialOrders }: { initialOrders: Order[] }) {
     );
   };
 
+  const advanceMixed = (order: MixedOrder, status: OrderStatus) => {
+    setBusyOrderId(order.orderId);
+    updateMixedStatus.mutate(
+      { orderId: order.orderId, status },
+      { onSettled: () => setBusyOrderId(null) },
+    );
+  };
+
+  const total = orders.length + mixedOrders.length;
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-secondary">
-          {orders.length} bestilling{orders.length === 1 ? "" : "er"} i køen
+          {total} bestilling{total === 1 ? "" : "er"} i køen
         </p>
         <LiveIndicator state={connection} />
       </div>
@@ -49,7 +87,10 @@ export function BaristaBoard({ initialOrders }: { initialOrders: Order[] }) {
             key={status}
             status={status}
             orders={orders.filter((order) => order.status === status)}
+            mixedOrders={mixedOrders.filter((order) => order.status === status)}
+            names={names}
             onAdvance={advance}
+            onAdvanceMixed={advanceMixed}
             busyOrderId={busyOrderId}
           />
         ))}

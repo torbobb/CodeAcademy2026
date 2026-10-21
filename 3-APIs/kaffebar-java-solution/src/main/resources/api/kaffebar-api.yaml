@@ -16,7 +16,9 @@
 #     TypeScript-klient generert fra den ene skal kunne kalle den andre uten
 #     endringer. Det er det som gjør at frontenden i samling 4 kan peke hit.
 #
-# Oppgave 9 (polymorfisme) ligger bevisst IKKE her. Se oppgave-9/.
+# Bakst (oppgave 9, polymorfisme) er lagt til ADDITIVT: `/pastries` og `/orders-v2`.
+# `Order` og `POST /orders` er urørt, så wire-kompatibiliteten over gjelder fortsatt.
+# Se oppgave-9/NOTAT.md for hvorfor `oneOf` ikke ligger i `Order` selv.
 
 openapi: 3.0.3
 
@@ -42,6 +44,10 @@ tags:
     description: Kaffemenyen
   - name: orders
     description: Bestillinger
+  - name: pastries
+    description: Bakverk på menyen
+  - name: mixed-orders
+    description: Bestillinger med både kaffe og bakst
   - name: system
     description: Helsesjekk og drift
 
@@ -135,6 +141,129 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # --- Oppgave 9: bakst. Egne stier, slik at /orders ikke endrer form ------
+  /pastries:
+    get:
+      tags: [pastries]
+      summary: Hent bakverk
+      description: Returnerer alle bakverk på menyen. Bruk `id` som `pastryId` i `POST /orders-v2`.
+      operationId: getPastries
+      responses:
+        '200':
+          description: En liste med bakverk ble vellykket hentet.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pastry'
+
+  /orders-v2:
+    get:
+      tags: [mixed-orders]
+      summary: Hent bestillinger med blandede varelinjer
+      description: |
+        Returnerer bestillinger, nyeste først. Kan filtreres på status og begrenses med
+        `limit`. Brukes av baristaskjermen.
+      operationId: listMixedOrders
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Returner kun bestillinger med denne statusen.
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: limit
+          in: query
+          required: false
+          description: Maks antall bestillinger i svaret.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: En liste med bestillinger.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MixedOrder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [mixed-orders]
+      summary: Opprett bestilling med blandede varelinjer
+      description: |
+        Hver varelinje er enten en kaffedrikk (`type: coffee`) eller et bakverk
+        (`type: pastry`). Oppretter bestillingen med status `PENDING` og svarer `201`
+        med en `Location`-header. Ukjent `coffeeId` eller `pastryId` gir `404`.
+      operationId: createMixedOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMixedOrderRequest'
+      responses:
+        '201':
+          description: Bestillingen ble opprettet.
+          headers:
+            Location:
+              description: URL-en til den opprettede bestillingen.
+              schema:
+                type: string
+                example: '/orders-v2/7f3f1f6e-9a0a-4e0c-9f5f-2f0a5a1d8b21'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MixedOrder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders-v2/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [mixed-orders]
+      summary: Hent én bestilling med blandede varelinjer
+      operationId: getMixedOrder
+      responses:
+        '200':
+          description: Bestillingen ble funnet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MixedOrder'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [mixed-orders]
+      summary: Oppdater status på en bestilling med blandede varelinjer
+      operationId: updateMixedOrderStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderStatusRequest'
+      responses:
+        '200':
+          description: Statusen ble oppdatert.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MixedOrder'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -415,6 +544,120 @@ components:
           type: string
           format: date-time
           example: '2026-09-13T09:41:20.118Z'
+
+    # --- Oppgave 9: polymorfisme -----------------------------------------
+    Pastry:
+      type: object
+      title: Pastry
+      description: Representerer et bakverk på menyen.
+      required: [id, name, price]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 'ba5e0001-0000-4000-8000-000000000001'
+        name:
+          type: string
+          example: 'Kanelbolle'
+        price:
+          type: number
+          description: Pris i norske kroner.
+          example: 38
+
+    CreateMixedOrderRequest:
+      type: object
+      title: CreateMixedOrderRequest
+      required: [customerName, items]
+      properties:
+        customerName:
+          type: string
+          minLength: 2
+          maxLength: 50
+          example: 'Ada'
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderItem'
+
+    MixedOrder:
+      type: object
+      title: MixedOrder
+      required: [orderId, customerName, items, status, createdAt]
+      properties:
+        orderId:
+          type: string
+          format: uuid
+          example: '7f3f1f6e-9a0a-4e0c-9f5f-2f0a5a1d8b21'
+        customerName:
+          type: string
+          example: 'Ada'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-09-13T09:41:12.004Z'
+
+    # `discriminator` gjør at Jackson vet hvilken undertype et JSON-objekt er.
+    OrderItem:
+      oneOf:
+        - $ref: '#/components/schemas/CoffeeItem'
+        - $ref: '#/components/schemas/PastryItem'
+      discriminator:
+        propertyName: type
+        mapping:
+          coffee: '#/components/schemas/CoffeeItem'
+          pastry: '#/components/schemas/PastryItem'
+
+    # Diskriminator-feltet må stå som ren `string` (ikke `enum: [coffee]`), ellers
+    # genererer openapi-generator kode som ikke kompilerer. Se oppgave-9/NOTAT.md.
+    CoffeeItem:
+      type: object
+      title: CoffeeItem
+      required: [type, coffeeId, size]
+      properties:
+        type:
+          type: string
+          description: Diskriminator. Alltid `coffee`.
+          example: coffee
+        coffeeId:
+          type: string
+          format: uuid
+          description: Id-en til en kaffe fra `GET /menu`.
+          example: 'c0ffee01-0000-4000-8000-000000000007'
+        size:
+          $ref: '#/components/schemas/CoffeeSize'
+        milkType:
+          $ref: '#/components/schemas/MilkType'
+        extraShot:
+          type: boolean
+          example: false
+
+    PastryItem:
+      type: object
+      title: PastryItem
+      required: [type, pastryId]
+      properties:
+        type:
+          type: string
+          description: Diskriminator. Alltid `pastry`.
+          example: pastry
+        pastryId:
+          type: string
+          format: uuid
+          description: Id-en til et bakverk fra `GET /pastries`.
+          example: 'ba5e0001-0000-4000-8000-000000000001'
+        isVegan:
+          type: boolean
+          example: false
+        warmed:
+          type: boolean
+          example: true
 
     # --- Oppgave 6: RFC 7807 ---------------------------------------------
     Problem:

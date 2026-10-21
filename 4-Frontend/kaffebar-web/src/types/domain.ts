@@ -15,6 +15,9 @@ export type CoffeeSize = components["schemas"]["CoffeeSize"];
 export type MilkType = components["schemas"]["MilkType"];
 export type CreateOrderRequest = components["schemas"]["CreateOrderRequest"];
 export type Problem = components["schemas"]["Problem"];
+export type Pastry = components["schemas"]["Pastry"];
+export type CreateMixedOrderRequest = components["schemas"]["CreateMixedOrderRequest"];
+export type MixedOrder = components["schemas"]["MixedOrder"];
 
 /** Kolonnene på baristaskjermen, i den rekkefølgen en ordre beveger seg. */
 export const STATUS_ORDER = ["PENDING", "BREWING", "READY"] as const;

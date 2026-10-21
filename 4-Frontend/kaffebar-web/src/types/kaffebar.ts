@@ -24,6 +24,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pastries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hent bakverk
+         * @description Returnerer alle bakverk på menyen. Bruk `id` som `pastryId` i `POST /orders-v2`.
+         */
+        get: operations["getPastries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders-v2": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hent bestillinger med blandede varelinjer
+         * @description Nyeste først. Kan filtreres på status og begrenses med `limit`.
+         */
+        get: operations["listMixedOrders"];
+        put?: never;
+        /**
+         * Opprett bestilling med blandede varelinjer
+         * @description Hver varelinje er enten en kaffedrikk (`type: coffee`) eller et bakverk
+         *     (`type: pastry`). Oppretter bestillingen med status `PENDING`.
+         */
+        post: operations["createMixedOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders-v2/{orderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id-en til bestillingen. */
+                orderId: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Oppdater status på en bestilling med blandede varelinjer */
+        patch: operations["updateMixedOrderStatus"];
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -288,6 +353,76 @@ export interface components {
             /** @example must NOT have fewer than 2 characters */
             message: string;
         };
+        /**
+         * Pastry
+         * @description Representerer et bakverk på menyen.
+         */
+        Pastry: {
+            /**
+             * Format: uuid
+             * @example ba5e0001-0000-4000-8000-000000000001
+             */
+            id: string;
+            /** @example Kanelbolle */
+            name: string;
+            /**
+             * @description Pris i norske kroner.
+             * @example 38
+             */
+            price: number;
+        };
+        /** CoffeeItem */
+        CoffeeItem: {
+            /**
+             * @description Diskriminator. Alltid `coffee`.
+             * @enum {string}
+             */
+            type: "coffee";
+            /**
+             * Format: uuid
+             * @description Id-en til en kaffe fra `GET /menu`.
+             */
+            coffeeId: string;
+            size: components["schemas"]["CoffeeSize"];
+            milkType?: components["schemas"]["MilkType"];
+            /** @example false */
+            extraShot?: boolean;
+        };
+        /** PastryItem */
+        PastryItem: {
+            /**
+             * @description Diskriminator. Alltid `pastry`.
+             * @enum {string}
+             */
+            type: "pastry";
+            /**
+             * Format: uuid
+             * @description Id-en til et bakverk fra `GET /pastries`.
+             */
+            pastryId: string;
+            /** @example false */
+            isVegan?: boolean;
+            /** @example true */
+            warmed?: boolean;
+        };
+        OrderItem: components["schemas"]["CoffeeItem"] | components["schemas"]["PastryItem"];
+        /** CreateMixedOrderRequest */
+        CreateMixedOrderRequest: {
+            /** @example Ada */
+            customerName: string;
+            items: components["schemas"]["OrderItem"][];
+        };
+        /** MixedOrder */
+        MixedOrder: {
+            /** Format: uuid */
+            orderId: string;
+            /** @example Ada */
+            customerName: string;
+            items: components["schemas"]["OrderItem"][];
+            status: components["schemas"]["OrderStatus"];
+            /** Format: date-time */
+            createdAt: string;
+        };
         /** Health */
         Health: {
             /** @enum {string} */
@@ -348,6 +483,53 @@ export interface operations {
                     "application/json": components["schemas"]["Coffee"][];
                 };
             };
+        };
+    };
+    getPastries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description En liste med bakverk ble vellykket hentet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pastry"][];
+                };
+            };
+        };
+    };
+    createMixedOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMixedOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description Bestillingen ble opprettet. */
+            201: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MixedOrder"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     listOrders: {
@@ -425,6 +607,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Order"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMixedOrders: {
+        parameters: {
+            query?: {
+                /** @description Returner kun bestillinger med denne statusen. */
+                status?: components["schemas"]["OrderStatus"];
+                /** @description Maks antall bestillinger i svaret. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description En liste med bestillinger. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MixedOrder"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    updateMixedOrderStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id-en til bestillingen. */
+                orderId: components["parameters"]["OrderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOrderStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Statusen ble oppdatert. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MixedOrder"];
                 };
             };
             400: components["responses"]["BadRequest"];

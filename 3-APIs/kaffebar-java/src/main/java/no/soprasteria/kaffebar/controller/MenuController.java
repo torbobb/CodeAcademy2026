@@ -13,6 +13,15 @@ public class MenuController implements MenuApi {
 
     @Override
     public ResponseEntity<List<Coffee>> getMenu() {
+        return ResponseEntity.ok(menu());
+    }
+
+    @Override
+    public ResponseEntity<List<String>> getCoffeeNames() {
+        return ResponseEntity.ok(menu().stream().map(Coffee::getName).toList());
+    }
+
+    private List<Coffee> menu() {
         // Her ville man normalt hentet data fra en database,
         // men vi hardkoder et par kaffedrikker for workshopen.
 
@@ -26,7 +35,7 @@ public class MenuController implements MenuApi {
         svart.setName("Svart Kaffe (V60)");
         svart.setPrice(38.00);
 
-        return ResponseEntity.ok(List.of(latte, svart));
+        return List.of(latte, svart);
     }
 }
 

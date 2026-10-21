@@ -1,4 +1,11 @@
-import type { Coffee, CreateOrderRequest, Order, OrderStatus } from "@/types/domain";
+import type {
+  Coffee,
+  CreateOrderRequest,
+  MixedOrder,
+  Order,
+  OrderStatus,
+  Pastry,
+} from "@/types/domain";
 
 /**
  * Mock-modus: en miniversjon av kaffebar-api som kjører inne i Next-prosessen.
@@ -20,12 +27,21 @@ export const MOCK_MENU: Coffee[] = [
   { id: "c0ffee01-0000-4000-8000-00000000000a", name: "Mocha", price: 59 },
 ];
 
+export const MOCK_PASTRIES: Pastry[] = [
+  { id: "ba5e0001-0000-4000-8000-000000000001", name: "Kanelbolle", price: 38 },
+  { id: "ba5e0001-0000-4000-8000-000000000002", name: "Croissant", price: 42 },
+  { id: "ba5e0001-0000-4000-8000-000000000003", name: "Skolebrød", price: 36 },
+  { id: "ba5e0001-0000-4000-8000-000000000004", name: "Vegansk muffins", price: 40 },
+  { id: "ba5e0001-0000-4000-8000-000000000005", name: "Brownie", price: 44 },
+];
+
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 // Samme grunn som bussen i events.ts: Next bunter instrumentation og route
 // handlere hver for seg, så lageret må ligge på globalThis for å være ett lager.
 const globalForStore = globalThis as typeof globalThis & {
   __kaffebarMockOrders?: Map<string, Order>;
+  __kaffebarMockMixedOrders?: Map<string, MixedOrder>;
 };
 
 const orders = (globalForStore.__kaffebarMockOrders ??= new Map<string, Order>());
@@ -87,6 +103,31 @@ export function listMockOrders(params: { status?: OrderStatus; limit?: number } 
 
 export function findMockOrder(orderId: string): Order | undefined {
   return orders.get(orderId);
+}
+
+const mixedOrders = (globalForStore.__kaffebarMockMixedOrders ??= new Map<string, MixedOrder>());
+
+export function addMockMixedOrder(order: MixedOrder): MixedOrder {
+  mixedOrders.set(order.orderId, order);
+  return order;
+}
+
+export function listMockMixedOrders(
+  params: { status?: OrderStatus; limit?: number } = {},
+): MixedOrder[] {
+  return [...mixedOrders.values()]
+    .filter((order) => (params.status ? order.status === params.status : true))
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .slice(0, params.limit ?? 100);
+}
+
+export function setMockMixedStatus(orderId: string, status: OrderStatus): MixedOrder | undefined {
+  const existing = mixedOrders.get(orderId);
+  if (!existing) return undefined;
+
+  const order: MixedOrder = { ...existing, status };
+  mixedOrders.set(orderId, order);
+  return order;
 }
 
 export function createMockOrder(request: CreateOrderRequest): Order {

@@ -1,8 +1,9 @@
 "use client";
 
 import { OrderCard } from "./OrderCard";
+import { MixedOrderCard } from "./MixedOrderCard";
 import { EmptyState } from "./EmptyState";
-import { STATUS_LABEL, type Order, type OrderStatus } from "@/types/domain";
+import { STATUS_LABEL, type MixedOrder, type Order, type OrderStatus } from "@/types/domain";
 
 const ACCENT: Record<OrderStatus, string> = {
   PENDING: "var(--status-pending)",
@@ -19,12 +20,18 @@ const EMPTY: Record<OrderStatus, { icon: string; description: string }> = {
 export function StatusColumn({
   status,
   orders,
+  mixedOrders = [],
+  names = new Map(),
   onAdvance,
+  onAdvanceMixed,
   busyOrderId,
 }: {
   status: OrderStatus;
   orders: Order[];
+  mixedOrders?: MixedOrder[];
+  names?: ReadonlyMap<string, string>;
   onAdvance?: (order: Order, next: OrderStatus) => void;
+  onAdvanceMixed?: (order: MixedOrder, next: OrderStatus) => void;
   busyOrderId?: string | null;
 }) {
   return (
@@ -34,11 +41,11 @@ export function StatusColumn({
           {STATUS_LABEL[status]}
         </h2>
         <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-secondary">
-          {orders.length}
+          {orders.length + mixedOrders.length}
         </span>
       </header>
 
-      {orders.length === 0 ? (
+      {orders.length + mixedOrders.length === 0 ? (
         <EmptyState
           icon={EMPTY[status].icon}
           title={STATUS_LABEL[status]}
@@ -46,6 +53,15 @@ export function StatusColumn({
         />
       ) : (
         <div className="flex flex-col gap-3">
+          {mixedOrders.map((order) => (
+            <MixedOrderCard
+              key={order.orderId}
+              order={order}
+              names={names}
+              {...(onAdvanceMixed ? { onAdvance: onAdvanceMixed } : {})}
+              busy={busyOrderId === order.orderId}
+            />
+          ))}
           {orders.map((order) => (
             <OrderCard
               key={order.orderId}

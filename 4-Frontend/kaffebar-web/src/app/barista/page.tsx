@@ -1,8 +1,8 @@
 import { ApiUnavailable } from "@/components/ApiUnavailable";
 import { BaristaBoard } from "@/components/BaristaBoard";
-import { fetchOrders } from "@/lib/api";
+import { fetchMenu, fetchMixedOrders, fetchOrders, fetchPastries } from "@/lib/api";
 import { KAFFEBAR_API_URL } from "@/lib/config";
-import type { Order } from "@/types/domain";
+import type { Coffee, MixedOrder, Order, Pastry } from "@/types/domain";
 
 /**
  * Baristaskjermen — en server component som henter den første tilstanden, og
@@ -13,11 +13,20 @@ import type { Order } from "@/types/domain";
  */
 export const dynamic = "force-dynamic";
 
-type PageData = { ok: true; orders: Order[] } | { ok: false; message: string };
+type PageData =
+  | { ok: true; orders: Order[]; mixedOrders: MixedOrder[]; menu: Coffee[]; pastries: Pastry[] }
+  | { ok: false; message: string };
 
 async function load(): Promise<PageData> {
   try {
-    return { ok: true, orders: await fetchOrders({ limit: 100 }) };
+    const orders = await fetchOrders({ limit: 100 });
+    // Eldre API-versjoner har ikke /orders-v2. Da vises bare vanlige bestillinger.
+    const [mixedOrders, menu, pastries] = await Promise.all([
+      fetchMixedOrders({ limit: 100 }).catch((): MixedOrder[] => []),
+      fetchMenu().catch((): Coffee[] => []),
+      fetchPastries().catch((): Pastry[] => []),
+    ]);
+    return { ok: true, orders, mixedOrders, menu, pastries };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Ukjent feil" };
   }
@@ -36,7 +45,12 @@ export default async function BaristaPage() {
       </header>
 
       {data.ok ? (
-        <BaristaBoard initialOrders={data.orders} />
+        <BaristaBoard
+          initialOrders={data.orders}
+          initialMixedOrders={data.mixedOrders}
+          menu={data.menu}
+          pastries={data.pastries}
+        />
       ) : (
         <ApiUnavailable url={KAFFEBAR_API_URL} message={data.message} />
       )}
