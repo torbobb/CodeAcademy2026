@@ -122,21 +122,29 @@ export async function subscribeToOrders(
   // ikke er løst. Uten den ville route handleren meldt «klar» til nettleseren selv
   // om ingen hendelser kunne komme, og indikatoren hadde stått på «Live» og løyet.
   // Den forsvinner av seg selv når du setter `consumerTag` i consume-kallet.
-  void RABBITMQ_EXCHANGE;
-  void onEvent;
 
-  if (!consumerTag) {
-    await channel.close();
-    throw new Error(
-      "Abonnementet i src/lib/rabbitmq.ts er ikke skrevet ferdig: consumerTag er ikke satt. " +
-        "Se oppgave 2 i 4-Frontend/oppgave.md.",
-    );
-  }
+  await channel.assertExchange(RABBITMQ_EXCHANGE, "topic", {durable: true});
+
+  const queue = await channel.assertQueue("", {exclusive: true, autoDelete: true});
+  await channel.bindQueue(queue.queue, RABBITMQ_EXCHANGE, "order.#");
+
+  const consumer = await channel.consume(
+      queue.queue,
+      (message) => {
+        if (!message) return;
+        try {
+          onEvent(JSON.parse(message.content.toString()) as KaffebarEvent);
+        } catch (error) {
+          console.error("Klarte ikke å tolke hendelse fra RabbitMQ: ", error)
+        }
+      },
+      {noAck: true},
+  );
 
   return {
     close: async () => {
       try {
-        if (consumerTag) await channel.cancel(consumerTag);
+        await channel.cancel(consumer.consumerTag);
         // Bare kanalen lukkes. Tilkoblingen er delt og lever videre.
         await channel.close();
       } catch {

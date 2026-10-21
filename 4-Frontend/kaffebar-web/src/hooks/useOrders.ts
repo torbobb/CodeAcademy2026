@@ -31,7 +31,7 @@ export const ORDERS_QUERY_KEY = ["orders"] as const;
  * At det er én linje er ikke tilfeldig: for resten av appen er en hendelse en
  * hendelse. Hvor den kom fra er BFF-ens problem, ikke UI-ets.
  */
-const EVENTS_URL = "/api/events/demo";
+const EVENTS_URL = "/api/events";
 
 async function fetchOrdersFromBff(): Promise<Order[]> {
   const response = await fetch("/api/orders", { cache: "no-store" });
